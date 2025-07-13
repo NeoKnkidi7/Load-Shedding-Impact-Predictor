@@ -5,13 +5,9 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import date, timedelta
-import geopandas as gpd
-import pydeck as pdk
 import time
 import requests
 from io import BytesIO
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 import seaborn as sns
 
@@ -55,10 +51,11 @@ st.markdown("""
     .stTabs [data-baseweb="tab-list"] {gap: 10px;}
     .stTabs [data-baseweb="tab"] {padding: 10px 20px; border-radius: 8px 8px 0 0;}
     .stTabs [aria-selected="true"] {background-color: var(--primary); color: white;}
+    .map-container {border-radius: 10px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.05);}
 </style>
 """, unsafe_allow_html=True)
 
-# Sample data generation (Replace with real API integrations)
+# Sample data generation
 def generate_loadshedding_data(location, start_date, end_date):
     """Generate mock load-shedding data"""
     dates = pd.date_range(start_date, end_date)
@@ -79,9 +76,7 @@ def generate_economic_data(location):
         base_revenue = np.random.uniform(50000, 200000)
         for month in range(1, 13):
             month_name = date(2023, month, 1).strftime('%b')
-            # Simulate seasonal patterns
             season_factor = 1 + 0.2 * np.sin(2 * np.pi * (month-1)/12)
-            # Simulate load-shedding impact
             outage_factor = 1 - np.random.uniform(0.05, 0.15) * np.random.choice([2, 3, 4])
             revenue = base_revenue * season_factor * outage_factor
             data.append({
@@ -92,17 +87,6 @@ def generate_economic_data(location):
                 'location': location
             })
     return pd.DataFrame(data)
-
-def generate_impact_predictions(location, outage_hours, sector):
-    """Generate impact predictions based on outage hours and sector"""
-    # Sector vulnerability factors
-    vulnerability = {
-        'Retail': 1.8,
-        'Manufacturing': 2.2,
-        'Services': 1.5,
-        'Hospitality': 2.5
-    }
-    return outage_hours * vulnerability.get(sector, 1.8) * np.random.uniform(-0.8, -1.2)
 
 def generate_correlation_data():
     """Generate correlation data between outages and revenue"""
@@ -121,7 +105,7 @@ def generate_correlation_data():
             })
     return pd.DataFrame(data)
 
-# SA Municipal Boundaries (Simplified)
+# SA Municipal Boundaries
 MUNICIPALITIES = {
     "Cape Town": {"lat": -33.9249, "lon": 18.4241, "province": "Western Cape"},
     "Johannesburg": {"lat": -26.2041, "lon": 28.0473, "province": "Gauteng"},
@@ -140,7 +124,6 @@ st.divider()
 
 # Sidebar Controls
 with st.sidebar:
-    st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/6/6d/Seal_of_the_Eskom.svg/1200px-Seal_of_the_Eskom.svg.png", width=80)
     st.header("⚙️ Prediction Parameters")
     location = st.selectbox("Municipality", list(MUNICIPALITIES.keys()), index=0)
     sector = st.selectbox("Business Sector", ['Retail', 'Manufacturing', 'Services', 'Hospitality'], index=0)
@@ -186,7 +169,6 @@ else:
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    # Key Metrics Card
     st.markdown('<div class="metric-card">', unsafe_allow_html=True)
     st.subheader("⏱️ Predicted Outage Hours")
     total_hours = loadshedding_df['outage_hours'].sum()
@@ -206,7 +188,7 @@ with col2:
 with col3:
     st.markdown('<div class="metric-card">', unsafe_allow_html=True)
     st.subheader("⚠️ Highest Risk")
-    risk_sector = "Hospitality"  # Placeholder logic
+    risk_sector = "Hospitality"
     st.metric("Most Vulnerable Sector", risk_sector, 
              delta="2.5x more sensitive", 
              delta_color="inverse")
@@ -218,10 +200,8 @@ tab1, tab2, tab3, tab4 = st.tabs(["📈 Forecast", "🗺️ Location Analysis", 
 with tab1:
     st.subheader(f"Load-Shedding Forecast for {location}")
     
-    # Create a dual-axis chart for stage and outage hours
+    # Create a dual-axis chart
     fig = go.Figure()
-    
-    # Add outage hours as bars
     fig.add_trace(go.Bar(
         x=loadshedding_df['date'],
         y=loadshedding_df['outage_hours'],
@@ -229,8 +209,6 @@ with tab1:
         marker_color='#e63946',
         opacity=0.7
     ))
-    
-    # Add stage as line
     fig.add_trace(go.Scatter(
         x=loadshedding_df['date'],
         y=loadshedding_df['stage'],
@@ -240,8 +218,6 @@ with tab1:
         line=dict(color='#1e3d6d', width=3),
         marker=dict(size=8)
     ))
-    
-    # Layout configuration
     fig.update_layout(
         yaxis=dict(title='Outage Hours', titlefont=dict(color='#e63946')),
         yaxis2=dict(
@@ -258,7 +234,6 @@ with tab1:
         plot_bgcolor='rgba(0,0,0,0)',
         margin=dict(l=40, r=40, b=40, t=40)
     )
-    
     st.plotly_chart(fig, use_container_width=True)
     
     # Detailed table
@@ -278,62 +253,43 @@ with tab2:
         'impact_score': np.random.uniform(0.5, 1.5) * (1 if name != location else 1.3)
     } for name, info in MUNICIPALITIES.items()])
     
-    # Create a deck.gl map
-    view_state = pdk.ViewState(
-        latitude=MUNICIPALITIES[location]["lat"],
-        longitude=MUNICIPALITIES[location]["lon"],
-        zoom=6,
-        pitch=50
+    # Create Plotly map
+    fig = px.scatter_geo(
+        map_data,
+        lat='lat',
+        lon='lon',
+        color='outage_index',
+        size='impact_score',
+        hover_name='municipality',
+        hover_data={'province': True, 'outage_index': ':.2f', 'impact_score': ':.2f', 'lat': False, 'lon': False},
+        projection='natural earth',
+        title='Municipal Load-Shedding Impact',
+        color_continuous_scale=px.colors.sequential.Reds
     )
     
-    # Layer for outage index
-    outage_layer = pdk.Layer(
-        'ScatterplotLayer',
-        data=map_data,
-        get_position='[lon, lat]',
-        get_radius='outage_index * 30000',
-        get_fill_color='[255, 99, 71, 180]',
-        pickable=True,
-        auto_highlight=True
+    # Update layout for South Africa focus
+    fig.update_geos(
+        center=dict(lat=-30, lon=25),
+        projection_scale=5,
+        scope='africa',
+        showcountries=True,
+        countrycolor='gray'
     )
     
-    # Layer for impact score
-    impact_layer = pdk.Layer(
-        'ColumnLayer',
-        data=map_data,
-        get_position='[lon, lat]',
-        get_elevation='impact_score * 50000',
-        elevation_scale=100,
-        radius=10000,
-        get_fill_color='[30, 61, 109, 200]',
-        pickable=True,
-        auto_highlight=True
+    fig.update_layout(
+        height=600,
+        margin=dict(l=0, r=0, t=40, b=0)
     )
     
-    # Render the map
-    st.pydeck_chart(pdk.Deck(
-        map_style='mapbox://styles/mapbox/light-v10',
-        initial_view_state=view_state,
-        layers=[outage_layer, impact_layer],
-        tooltip={
-            'html': '<b>{municipality}</b><br>'
-                    'Province: {province}<br>'
-                    'Outage Index: {outage_index:.2f}<br>'
-                    'Impact Score: {impact_score:.2f}',
-            'style': {
-                'backgroundColor': 'white',
-                'color': '#333'
-            }
-        }
-    ))
+    st.plotly_chart(fig, use_container_width=True)
     
     # Key for map
     col1, col2 = st.columns(2)
     with col1:
         st.markdown("""
         **Map Legend**  
-        🔴 Circle Size: Outage Index (higher = more outages)  
-        🔵 Bar Height: Economic Impact Score (higher = more impact)
+        🔴 Circle Color: Outage Index (darker = more outages)  
+        🔵 Circle Size: Economic Impact Score (larger = more impact)
         """)
     with col2:
         st.metric("Selected Municipality", location)
@@ -443,10 +399,7 @@ with tab4:
             
             # Calculate impact
             if st.form_submit_button("Calculate Impact"):
-                # Simulate calculation
-                with st.spinner("Analyzing potential impact..."):
-                    time.sleep(2)
-                    st.session_state.show_results = True
+                st.session_state.show_results = True
     
     with col2:
         if st.session_state.get('show_results'):
