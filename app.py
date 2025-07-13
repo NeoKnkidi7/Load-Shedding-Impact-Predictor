@@ -11,6 +11,10 @@ from io import BytesIO
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+# Initialize session state
+if 'show_results' not in st.session_state:
+    st.session_state.show_results = False
+
 # App configuration
 st.set_page_config(
     page_title="Load-Shedding Impact Predictor",
